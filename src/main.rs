@@ -35,16 +35,24 @@ const DEFAULT_TARGET_TRIPLE: &str = "aarch64-none-elf";
 const DEFAULT_TARGET_JSON: &str = include_str!("../default_specs/aarch64-none-elf.json");
 const DEFAULT_TARGET_LD: &str = include_str!("../default_specs/aarch64-none-elf.ld");
 
-fn prepare_default_target(root: &str) -> String {
-    let target_path = format!("{}/target", root);
-    std::fs::create_dir_all(target_path.clone()).unwrap();
 
-    let json = format!("{}/{}.json", target_path, DEFAULT_TARGET_TRIPLE);
-    let ld = format!("{}/{}.ld", target_path, DEFAULT_TARGET_TRIPLE);
+fn get_default_target_json(target_path: &PathBuf) -> PathBuf {
+    target_path.join(format!("{}.json", DEFAULT_TARGET_TRIPLE))
+}
 
-    std::fs::write(json, DEFAULT_TARGET_JSON.replace("$LD_PATH", ld.as_str())).unwrap();
-    std::fs::write(ld, DEFAULT_TARGET_LD.to_string()).unwrap();
+fn prepare_default_target(root: &PathBuf) -> PathBuf {
+    let target_path: PathBuf = root.join("target");
+
+    std::fs::create_dir_all(target_path.as_path()).unwrap();
+
+    let json_path = get_default_target_json(&target_path);
     
+    let ld_path = target_path.join(format!("{}.ld", DEFAULT_TARGET_TRIPLE));
+    let ld_path = ld_path.into_os_string().into_string().unwrap();
+
+    std::fs::write(json_path.as_path(), DEFAULT_TARGET_JSON.replace("$LD_PATH", ld_path.replace("\\", "\\\\").as_str())).unwrap();
+    std::fs::write(ld_path, DEFAULT_TARGET_LD.to_string()).unwrap();
+
     target_path
 }
 
@@ -194,25 +202,25 @@ fn main() {
         Err(_) => metadata.workspace_root.clone()
     };
 
-    let triple = match nx_matches.value_of("triple") {
-        Some(triple_str) => triple_str,
-        None => DEFAULT_TARGET_TRIPLE
-    };
-    if is_verbose {
-        println!("Triple: {}", triple);
-    }
-
     let use_default_target = nx_matches.value_of("use-custom-target").is_none();
     if is_verbose {
         println!("Use default target: {}", use_default_target);
     }
 
     let build_target_path = match use_default_target {
-        true => prepare_default_target(rust_target_path.to_str().unwrap()),
-        false => rust_target_path.to_str().unwrap().into(),
+        true => prepare_default_target(&rust_target_path),
+        false => rust_target_path,
     };
     if is_verbose {
-        println!("Build target path: {}", build_target_path);
+        println!("Build target path: {}", build_target_path.display());
+    }
+
+    let triple = match nx_matches.value_of("triple") {
+        Some(triple_str) => triple_str.to_owned(),
+        None => get_default_target_json(&build_target_path).to_str().unwrap().to_owned()
+    };
+    if is_verbose {
+        println!("Triple: {}", triple);
     }
 
     let mut build_args: Vec<String> = vec![
